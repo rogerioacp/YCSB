@@ -26,21 +26,46 @@ import org.postgresql.util.PGobject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.sql.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+
+
 import java.util.*;
+
+import static site.ycsb.workloads.CoreWorkload.TABLENAME_PROPERTY;
+import static site.ycsb.workloads.CoreWorkload.TABLENAME_PROPERTY_DEFAULT;
 
 /**
  * PostgreNoSQL client for YCSB framework.
  */
 public class PostgreNoSQLDBClient extends DB {
   private static final Logger LOG = LoggerFactory.getLogger(PostgreNoSQLDBClient.class);
+
+
+
+  enum PostgresMode{
+    BASELINE(0), OIS(1), PLAINTEXT(2);
+
+    private final int internalType;
+
+    PostgresMode(int type) {
+      internalType = type;
+    }
+
+    public int getInternalType() {
+      return internalType;
+    }
+
+    int getHashCode() {
+      final int prime = 31;
+      int result = 1;
+      result = prime * result + internalType;
+      return result;
+    }
+  }
 
   /** Count the number of times initialized to teardown on the last. */
   private static final AtomicInteger INIT_COUNT = new AtomicInteger(0);
@@ -77,6 +102,11 @@ public class PostgreNoSQLDBClient extends DB {
 
   private static final String DEFAULT_PROP = "";
 
+  /** Postgres execution mode. */
+  public static final String EXECUTION_MODE = "postgrenosql.execution";
+
+  private PostgresMode pgmode;
+
   /** Returns parsed boolean value from the properties if set, otherwise returns defaultVal. */
   private static boolean getBoolProperty(Properties props, String key, boolean defaultVal) {
     String valueStr = props.getProperty(key);
@@ -98,6 +128,7 @@ public class PostgreNoSQLDBClient extends DB {
       String urls = props.getProperty(CONNECTION_URL, DEFAULT_PROP);
       String user = props.getProperty(CONNECTION_USER, DEFAULT_PROP);
       String passwd = props.getProperty(CONNECTION_PASSWD, DEFAULT_PROP);
+      String pgexec = props.getProperty(EXECUTION_MODE, PostgresMode.PLAINTEXT.name());
       boolean autoCommit = getBoolProperty(props, JDBC_AUTO_COMMIT, true);
 
       try {
@@ -114,6 +145,18 @@ public class PostgreNoSQLDBClient extends DB {
       } catch (Exception e) {
         LOG.error("Error during initialization: " + e);
       }
+      pgmode = PostgresMode.valueOf(pgexec);
+
+      if(pgmode != PostgresMode.PLAINTEXT){
+        executeStatement(createOpenEnclaveStatement());
+        executeStatement(createInitSoeStatement(pgmode.getInternalType()));
+        executeStatement(createLoadBlocksStatement());
+      }
+
+      String tableName = props.getProperty(TABLENAME_PROPERTY, TABLENAME_PROPERTY_DEFAULT);
+      executeStatement("BEGIN");
+      executeStatement(createDeclareCursorStatement(tableName));
+
     }
   }
 
@@ -121,6 +164,9 @@ public class PostgreNoSQLDBClient extends DB {
   public void cleanup() throws DBException {
     if (INIT_COUNT.decrementAndGet() == 0) {
       try {
+        //Close transaction
+        executeStatement("COMMIT");
+
         cachedStatements.clear();
 
         if (!connection.getAutoCommit()){
@@ -134,8 +180,9 @@ public class PostgreNoSQLDBClient extends DB {
     }
   }
 
-  @Override
-  public Status read(String tableName, String key, Set<String> fields, Map<String, ByteIterator> result) {
+
+ // @Override
+  /*public Status read(String tableName, String key, Set<String> fields, Map<String, ByteIterator> result) {
     try {
       StatementType type = new StatementType(StatementType.Type.READ, tableName, fields);
       PreparedStatement readStatement = cachedStatements.get(type);
@@ -167,6 +214,49 @@ public class PostgreNoSQLDBClient extends DB {
       return Status.OK;
 
     } catch (SQLException e) {
+      LOG.error("Error in processing read of table " + tableName + ": " + e);
+      return Status.ERROR;
+    }
+  }*/
+
+  public Status read(String tableName, String key, Set<String> fields, Map<String, ByteIterator> result){
+    String fetchNextStatment = "FETCH NEXT IN tcursor";
+
+    try{
+
+      if(this.pgmode == PostgresMode.OIS){
+        executeStatement(createSetNextTermStatement(trimKey(key)));
+      }
+      Statement query = connection.createStatement();
+      ResultSet resultSet = query.executeQuery(fetchNextStatment);
+
+      if (!resultSet.next()) {
+        resultSet.close();
+        //return  Status.NOT_FOUND;
+        return Status.OK;
+      }
+      if (result != null) {
+        if (fields == null){
+          //System.out.println("Result is " +resultSet);
+
+          while (resultSet.next()){
+            String field = resultSet.getString(2);
+            String value = resultSet.getString(3);
+            //System.out.println("Result is " + field + " - "  + value);
+            result.put(field, new StringByteIterator(value));
+          }
+        } else {
+          for (String field : fields) {
+            String value = resultSet.getString(field);
+            result.put(field, new StringByteIterator(value));
+          }
+        }
+      }
+      resultSet.close();
+      return Status.OK;
+
+
+    }catch (SQLException e) {
       LOG.error("Error in processing read of table " + tableName + ": " + e);
       return Status.ERROR;
     }
@@ -236,6 +326,7 @@ public class PostgreNoSQLDBClient extends DB {
     }
   }
 
+
   @Override
   public Status insert(String tableName, String key, Map<String, ByteIterator> values) {
     try{
@@ -250,12 +341,16 @@ public class PostgreNoSQLDBClient extends DB {
         jsonObject.put(entry.getKey(), entry.getValue().toString());
       }
 
-      PGobject object = new PGobject();
+      /*PGobject object = new PGobject();
       object.setType("jsonb");
-      object.setValue(jsonObject.toJSONString());
+      object.setValue(jsonObject.toJSONString());*/
+      //String logmsg = "Trimmed key is " + trimKey(key) + " and json object has size ";
 
-      insertStatement.setObject(2, object);
-      insertStatement.setString(1, key);
+      //System.out.println(logmsg + jsonObject.toJSONString().length());
+
+
+      insertStatement.setObject(2, jsonObject.toJSONString().substring(0, 99));
+      insertStatement.setString(1, trimKey(key));
 
       int result = insertStatement.executeUpdate();
       if (result == 1) {
@@ -405,5 +500,59 @@ public class PostgreNoSQLDBClient extends DB {
     delete.append(PRIMARY_KEY);
     delete.append(" = ?");
     return delete.toString();
+  }
+
+
+  /* Oblivpg_fdw staments*/
+
+  private String createOpenEnclaveStatement(){
+    return "select open_enclave()";
+  }
+
+  private String createInitSoeStatement(int mode){
+    StringBuilder query = new StringBuilder();
+    query.append("select init_soe( ");
+    query.append(mode);
+    query.append(", CAST( get_ftw_oid() as INTEGER), 1, CAST (get_original_index_oid() as INTEGER))");
+    return query.toString();
+  }
+
+  private String createLoadBlocksStatement(){
+    return "select load_blocks(CAST (get_original_index_oid() as INTEGER), CAST (get_original_heap_oid() as INTEGER))";
+  }
+
+  private String createCloseEnclaveStatement(){
+    return "select close_enclave()";
+  }
+
+  private String createDeclareCursorStatement(String tableName){
+    return "declare tcursor CURSOR FOR select YCSB_KEY," + COLUMN_NAME + " from " + tableName;
+  }
+  private String createSetNextTermStatement(String key){
+    return "select set_nextterm('"+key +"')";
+  }
+
+
+  private Status executeStatement(String statement){
+    try{
+
+      boolean result;
+      Statement query = connection.createStatement();
+      result = query.execute(statement);
+
+      if (result){
+        return Status.OK;
+      }
+
+      return Status.UNEXPECTED_STATE;
+    }catch(SQLException ex){
+      LOG.error(ex.getMessage());
+      return Status.ERROR;
+
+    }
+  }
+
+  private String trimKey(String key){
+    return key.substring(4, 13);
   }
 }
