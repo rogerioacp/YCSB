@@ -24,12 +24,12 @@
 
 recordcount=100000
 #operationcount=10000
-operationcount=1000000
+operationcount=100000
 workload=site.ycsb.workloads.CoreWorkload
-#hdrhistogram.fileoutput=true
-measurementtype=timeseries
+hdrhistogram.fileoutput=true
+#measurementtype=timeseries
 #exportfile="results/workloda"
-timeseries.granularity=1000
+#timeseries.granularity=1000
 readallfields=true
 
 readproportion=1

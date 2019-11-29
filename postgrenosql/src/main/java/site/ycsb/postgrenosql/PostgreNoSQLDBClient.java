@@ -148,14 +148,15 @@ public class PostgreNoSQLDBClient extends DB {
       pgmode = PostgresMode.valueOf(pgexec);
 
       if(pgmode != PostgresMode.PLAINTEXT){
+        executeStatement("BEGIN");
         executeStatement(createOpenEnclaveStatement());
         executeStatement(createInitSoeStatement(pgmode.getInternalType()));
+        System.err.println("Loading oblivious tables.");
         executeStatement(createLoadBlocksStatement());
+        System.err.println("Load complete");
+        String tableName = props.getProperty(TABLENAME_PROPERTY, TABLENAME_PROPERTY_DEFAULT);
+        executeStatement(createDeclareCursorStatement(tableName));
       }
-
-      String tableName = props.getProperty(TABLENAME_PROPERTY, TABLENAME_PROPERTY_DEFAULT);
-      executeStatement("BEGIN");
-      executeStatement(createDeclareCursorStatement(tableName));
 
     }
   }
@@ -165,11 +166,13 @@ public class PostgreNoSQLDBClient extends DB {
     if (INIT_COUNT.decrementAndGet() == 0) {
       try {
         //Close transaction
-        executeStatement("COMMIT");
 
         cachedStatements.clear();
-
-        if (!connection.getAutoCommit()){
+        if(pgmode != PostgresMode.PLAINTEXT){
+          executeStatement("CLOSE tcursor");
+          executeStatement("select close_enclave()");
+        }
+        if (!connection.getAutoCommit() || pgmode != PostgresMode.PLAINTEXT){
           connection.commit();
         }
         connection.close();
@@ -221,14 +224,16 @@ public class PostgreNoSQLDBClient extends DB {
 
   public Status read(String tableName, String key, Set<String> fields, Map<String, ByteIterator> result){
     String fetchNextStatment = "FETCH NEXT IN tcursor";
-
     try{
-
-      if(this.pgmode == PostgresMode.OIS){
-        executeStatement(createSetNextTermStatement(trimKey(key)));
-      }
+      ResultSet resultSet;
       Statement query = connection.createStatement();
-      ResultSet resultSet = query.executeQuery(fetchNextStatment);
+
+      if(this.pgmode != PostgresMode.PLAINTEXT) {
+        executeStatement(createSetNextTermStatement(trimKey(key)));
+        resultSet = query.executeQuery(fetchNextStatment);
+      }else{
+        resultSet = query.executeQuery(createPlaintextReadStatement(trimKey(key)));
+      }
 
       if (!resultSet.next()) {
         resultSet.close();
@@ -252,6 +257,7 @@ public class PostgreNoSQLDBClient extends DB {
           }
         }
       }
+
       resultSet.close();
       return Status.OK;
 
@@ -348,8 +354,11 @@ public class PostgreNoSQLDBClient extends DB {
 
       //System.out.println(logmsg + jsonObject.toJSONString().length());
 
-
-      insertStatement.setObject(2, jsonObject.toJSONString().substring(0, 99));
+      if(jsonObject.toJSONString().length() > 1300){
+        insertStatement.setObject(2, jsonObject.toJSONString().substring(0, 1300));
+      }else{
+        insertStatement.setObject(2, jsonObject.toJSONString());
+      }
       insertStatement.setString(1, trimKey(key));
 
       int result = insertStatement.executeUpdate();
@@ -526,7 +535,16 @@ public class PostgreNoSQLDBClient extends DB {
   }
 
   private String createDeclareCursorStatement(String tableName){
-    return "declare tcursor CURSOR FOR select YCSB_KEY," + COLUMN_NAME + " from " + tableName;
+    return "declare tcursor CURSOR FOR select YCSB_KEY," + COLUMN_NAME + " from ftw_" + tableName;
+  }
+  private String createDeclareCursorStatementBase(String tableName, String key){
+    return "declare tcursor CURSOR FOR select YCSB_KEY," + COLUMN_NAME + " from " +
+            tableName + " where YCSB_KEY='"+key+"'";
+
+  }
+
+  private String createPlaintextReadStatement(String key){
+    return "select YCSB_KEY,YCSB_VALUE from usertable where YCSB_KEY='"+key+"'";
   }
   private String createSetNextTermStatement(String key){
     return "select set_nextterm('"+key +"')";

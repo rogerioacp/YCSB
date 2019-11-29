@@ -6,7 +6,7 @@ CREATE EXTENSION oblivpg_fdw;
 -- Plaintext Table
 CREATE TABLE usertable (
 	YCSB_KEY char(10), 
-	YCSB_VALUE char(100)
+	YCSB_VALUE char(1300)
 );
 
 
@@ -17,7 +17,7 @@ create index usertable_key on usertable using btree (YCSB_KEY);
 
 CREATE TABLE mirror_usertable (
 	YCSB_KEY char(10), 
-	YCSB_VALUE char(100)
+	YCSB_VALUE char(1300)
 );
 
 
@@ -26,7 +26,7 @@ create index mirror_usertable_key on mirror_usertable using btree (YCSB_KEY);
 -- foreign table interface used by the client
 CREATE FOREIGN TABLE ftw_usertable(
 	YCSB_KEY char(10), 
-	YCSB_VALUE char(100)
+	YCSB_VALUE char(1300)
 ) SERVER obliv;
 
 
@@ -46,7 +46,7 @@ $$
 
 		select Oid from pg_class into user_email_oid  where relname  = 'mirror_usertable_key';
 
-		insert into obl_ftw (ftw_table_oid, mirror_table_oid, mirror_index_oid, ftw_table_nblocks, ftw_index_nblocks, init) values(ftw_users_oid, user_oid, user_email_oid, 2850, 700, false);
+		insert into obl_ftw (ftw_table_oid, mirror_table_oid, mirror_index_oid, ftw_table_nblocks, ftw_index_nblocks, init) values(ftw_users_oid, user_oid, user_email_oid, 20000, 1000, false);
 
 	END;
 $$ LANGUAGE plpgsql;
