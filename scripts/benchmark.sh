@@ -4,7 +4,7 @@
 
 #SYSTEMS=(PLAINTEXT BASELINE OBLIVPG)
 SYSTEMS=(PLAINTEXT)
-
+#SYSTEMS=(BASELINE)
 #the record count is to the power of 2, e.g.: 2^7, 2^8,...
 T_SIZE=(10 12 14 16 18 20 22)
 # real values to be defined
@@ -13,8 +13,8 @@ I_BLOCKS=(10 20 100 330 1400 5280 20500)
 
 # Max execution time. Timeout after the specified time.
 # 1020s = 20min = 5min ramp-up + 15min execution time
-#MAX_EXEC_TIME=1200
-MAX_EXEC_TIME=120
+MAX_EXEC_TIME=1200
+#MAX_EXEC_TIME=300
 
 NRUNS=1
 
@@ -54,7 +54,7 @@ function pgs_init {
         ssh -t -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;./initdb.sh"
         cp $TEMPLATES_PATH/setup.sql setup.sql
     else
-        local backup=${system}_${table_size}_1
+        local backup=PLAINTEXT_${table_size}_1
         ssh -t -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;cp -r backups/$backup data "
         ssh -t -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;./initdb_run.sh"
         cp $TEMPLATES_PATH/setup_run.sql setup.sql
@@ -120,7 +120,7 @@ function pgs_stop {
     local run=$3
     local op=$4
 
-    local path="${system}_${table_size}_${run}"
+    local path="${table_size}_${run}"
 
     ssh -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;./stopdb.sh"
 
@@ -166,7 +166,7 @@ do
             i_blocks=${I_BLOCKS[i]}
             table_size=$((2**($exponent+0)))
             echo "$(date) - Run $j for $system with table size $table_size."
-            run_test $system $table_size $j "run" $t_blocks $i_blocks
+            run_test $system $table_size $j "load" $t_blocks $i_blocks
         done
     done
 done
