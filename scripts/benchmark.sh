@@ -6,18 +6,15 @@
 SYSTEMS=(PLAINTEXT)
 
 #the record count is to the power of 2, e.g.: 2^7, 2^8,...
-#T_SIZE=(7 8 9 10 12 14 16 18 20)
-T_SIZE=(10 14 18 22 26 30)
-#T_SIZE=(7)
-#T_BLOCKS=(100)
-#I_BLOCKS=(100)
+T_SIZE=(10 12 14 16 18 20 22)
 # real values to be defined
-T_BLOCKS=(100 100 100 100 100 100 100 100 100)
-I_BLOCKS=(100 100 100 100 100 100 100 100 100)
+T_BLOCKS=(200 450 2800 10800 42800 167800 675000)
+I_BLOCKS=(10 20 100 330 1400 5280 20500)
 
 # Max execution time. Timeout after the specified time.
 # 1020s = 20min = 5min ramp-up + 15min execution time
-MAX_EXEC_TIME=1200
+#MAX_EXEC_TIME=1200
+MAX_EXEC_TIME=120
 
 NRUNS=1
 
@@ -34,24 +31,34 @@ export PATH=$PATH:/usr/local/pgsql/bin
 function ycsb_init {
     local table_size=$1
     local op=$2
+    local system=$3
 
     cp $TEMPLATES_PATH/workloada $YCSB_PATH/workloads/workloada
-    sed -ie "s/{tsize}/$table_size/g" $YCSB_PATH/workloads/workloada
-    #add block size to setup.sqli
+    cp $TEMPLATES_PATH/postgrenosql.properties $YCSB_PATH/postgrenosql.properties
 
-    if [ op == "run" ];then
+    sed -ie "s/{tsize}/$table_size/g" $YCSB_PATH/workloads/workloada
+
+    if [ $op == "run" ];then
         echo "maxexecutiontime=$MAX_EXEC_TIME" >> $YCSB_PATH/workloads/workloada
+        echo "postgrenosql.execution=$system" >> $YCSB_PATH/postgrenosql.properties
     fi
 }
 
 function pgs_init {
-    local t_nblocks=$1
-    local i_nblocks=$2
+    local system=$1
+    local table_size=$2
+    local t_nblocks=$3
+    local i_nblocks=$4
 
-    ssh -t -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;./initdb.sh"
-    #ssh -t -i $ssh_key gsd@$HOST "createdb test"
-
-    cp $TEMPLATES_PATH/setup.sql setup.sql
+    if [ $op == "load" ];then
+        ssh -t -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;./initdb.sh"
+        cp $TEMPLATES_PATH/setup.sql setup.sql
+    else
+        local backup=${system}_${table_size}_1
+        ssh -t -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;cp -r backups/$backup data "
+        ssh -t -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;./initdb_run.sh"
+        cp $TEMPLATES_PATH/setup_run.sql setup.sql
+    fi
 
     sed -ie "s/{T_NBLOCKS}/$t_nblocks/g" setup.sql
     sed -ie "s/{I_NBLOCKS}/$i_nblocks/g" setup.sql
@@ -77,7 +84,7 @@ function exec_ycsb {
     local op=$4
     local path="${system}_${table_size}_${run}_${op}.dat"
 
-    echo "starting ycsn with op $op"
+    echo "ycsb $op $system $table_size $run"
     ./bin/ycsb -s $op postgrenosql -P workloads/workloada -P postgrenosql.properties &> $RESULTS_PATH/ycsb/$path
 
     if [ $op == "load" ] && test -f "INSERT.hdr"; then
@@ -103,6 +110,7 @@ function dstat_stop {
 
     ssh -i $SSH_KEY gsd@$HOST "rm $path.csv"
     ssh -i $SSH_KEY gsd@$HOST "rm ${path}_output.log"
+    pkill screen
 
 }
 
@@ -133,8 +141,8 @@ function run_test {
     local t_blocks=$5
     local i_blocks=$6
 
-    ycsb_init $table_size $op
-    pgs_init $t_blocks $i_blocks
+    ycsb_init $table_size $op $system
+    pgs_init $system $table_size $t_blocks $i_blocks
     dstat_start $system $table_size $run $op
     exec_ycsb $system $table_size $run $op
     dstat_stop $system $table_size $run $op
@@ -158,7 +166,7 @@ do
             i_blocks=${I_BLOCKS[i]}
             table_size=$((2**($exponent+0)))
             echo "$(date) - Run $j for $system with table size $table_size."
-            run_test $system $table_size $j "load" $t_blocks $i_blocks
+            run_test $system $table_size $j "run" $t_blocks $i_blocks
         done
     done
 done

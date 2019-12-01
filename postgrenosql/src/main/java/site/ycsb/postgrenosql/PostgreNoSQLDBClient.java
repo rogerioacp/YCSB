@@ -242,14 +242,14 @@ public class PostgreNoSQLDBClient extends DB {
       }
       if (result != null) {
         if (fields == null){
-          //System.out.println("Result is " +resultSet);
-
-          while (resultSet.next()){
-            String field = resultSet.getString(2);
-            String value = resultSet.getString(3);
-            //System.out.println("Result is " + field + " - "  + value);
+          String field;
+          String value;
+          do{
+            field = resultSet.getString(1);
+            value = resultSet.getString(2);
             result.put(field, new StringByteIterator(value));
-          }
+          }while (resultSet.next());
+
         } else {
           for (String field : fields) {
             String value = resultSet.getString(field);
