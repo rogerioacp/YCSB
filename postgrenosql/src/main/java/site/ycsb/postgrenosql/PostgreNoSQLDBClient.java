@@ -150,7 +150,9 @@ public class PostgreNoSQLDBClient extends DB {
       if(pgmode != PostgresMode.PLAINTEXT){
         executeStatement("BEGIN");
         executeStatement(createOpenEnclaveStatement());
-        executeStatement(createInitSoeStatement(pgmode.getInternalType()));
+        String initSoe = createInitSoeStatement(pgmode.getInternalType());
+        System.err.println("Init soe " + initSoe);
+        executeStatement(initSoe);
         System.err.println("Loading oblivious tables.");
         executeStatement(createLoadBlocksStatement());
         System.err.println("Load complete");
@@ -520,7 +522,7 @@ public class PostgreNoSQLDBClient extends DB {
 
   private String createInitSoeStatement(int mode){
     StringBuilder query = new StringBuilder();
-    query.append("select init_soe( ");
+    query.append("select init_soe(");
     query.append(mode);
     query.append(", CAST( get_ftw_oid() as INTEGER), 1, CAST (get_original_index_oid() as INTEGER))");
     return query.toString();

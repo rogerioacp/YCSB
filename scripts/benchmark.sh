@@ -5,18 +5,24 @@
 #SYSTEMS=(PLAINTEXT BASELINE OBLIVPG)
 SYSTEMS=(PLAINTEXT)
 #SYSTEMS=(BASELINE)
+#SYSTEMS=(OIS)
 #the record count is to the power of 2, e.g.: 2^7, 2^8,...
 T_SIZE=(10 12 14 16 18 20 22)
+
+#T_SIZE=(10 12 14 16 18)
 # real values to be defined
-T_BLOCKS=(200 450 2800 10800 42800 167800 675000)
-I_BLOCKS=(10 20 100 330 1400 5280 20500)
+#T_BLOCKS=(200 800 3000 12000 44000 176000 699100)
+#I_BLOCKS=(10 60 100 330 1300 6000 21100)
+T_SIZE=(22)
+T_BLOCKS=(699100)
+I_BLOCKS=(21100)
 
 # Max execution time. Timeout after the specified time.
 # 1020s = 20min = 5min ramp-up + 15min execution time
-MAX_EXEC_TIME=1200
+MAX_EXEC_TIME=1800
 #MAX_EXEC_TIME=300
-
-NRUNS=1
+#MAX_EXEC_TIME=5400
+NRUNS=3
 
 HOST=cloud105
 
@@ -51,20 +57,19 @@ function pgs_init {
     local i_nblocks=$4
 
     if [ $op == "load" ];then
-        ssh -t -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;./initdb.sh"
+        ssh -tt -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;./initdb.sh"
         cp $TEMPLATES_PATH/setup.sql setup.sql
     else
-        local backup=PLAINTEXT_${table_size}_1
-        ssh -t -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;cp -r backups/$backup data "
-        ssh -t -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;./initdb_run.sh"
+        local backup=${table_size}_1
+        ssh -tt -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;cp -r backups/$backup data"
+        ssh -tt -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;cp postgresql.conf data/postgresql.conf"
+        ssh -tt -i $SSH_KEY gsd@$HOST "cd $PGS_PATH;./initdb_run.sh"
         cp $TEMPLATES_PATH/setup_run.sql setup.sql
+        sed -ie "s/{T_NBLOCKS}/$t_nblocks/g" setup.sql
+        sed -ie "s/{I_NBLOCKS}/$i_nblocks/g" setup.sql
     fi
 
-    sed -ie "s/{T_NBLOCKS}/$t_nblocks/g" setup.sql
-    sed -ie "s/{I_NBLOCKS}/$i_nblocks/g" setup.sql
-
     psql -h $HOST -U gsd -f setup.sql test
-
 }
 
 function dstat_start {
@@ -74,7 +79,7 @@ function dstat_start {
     local op=$4
     local path="$PGS_PATH/${system}_${table_size}_${run}_${op}"
 
-    screen -S DSTAT -d -m ssh -i $SSH_KEY gsd@$HOST "nohup dstat -tcdnm --fs --noheaders --output $path.csv &> ${path}_output.log &"
+    ssh -i $SSH_KEY gsd@$HOST "nohup dstat -tcdnm --fs --noheaders --output $path.csv &> ${path}_output.log &"
 }
 
 function exec_ycsb {
@@ -110,7 +115,7 @@ function dstat_stop {
 
     ssh -i $SSH_KEY gsd@$HOST "rm $path.csv"
     ssh -i $SSH_KEY gsd@$HOST "rm ${path}_output.log"
-    pkill screen
+    #pkill screen
 
 }
 
@@ -166,7 +171,7 @@ do
             i_blocks=${I_BLOCKS[i]}
             table_size=$((2**($exponent+0)))
             echo "$(date) - Run $j for $system with table size $table_size."
-            run_test $system $table_size $j "load" $t_blocks $i_blocks
+            run_test $system $table_size $j "run" $t_blocks $i_blocks
         done
     done
 done
