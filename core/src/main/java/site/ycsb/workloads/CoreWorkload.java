@@ -278,6 +278,10 @@ public class CoreWorkload extends Workload {
    */
   public static final String MAX_SCAN_LENGTH_PROPERTY_DEFAULT = "1000";
 
+  public static final String SCAN_START_KEY_PROPERTY = "scanstartkey";
+
+  //public static final String SCAN_START_KEY_DEFAULT ="user000000000";
+
   /**
    * The name of the property for the scan length distribution. Options are "uniform" and "zipfian"
    * (favoring short scans)
@@ -353,6 +357,7 @@ public class CoreWorkload extends Workload {
   protected int zeropadding;
   protected int insertionRetryLimit;
   protected int insertionRetryInterval;
+  protected String startScanKey;
 
   private Measurements measurements = Measurements.getMeasurements();
 
@@ -498,7 +503,7 @@ public class CoreWorkload extends Workload {
     }
 
     fieldchooser = new UniformLongGenerator(0, fieldcount - 1);
-
+    this.startScanKey = p.getProperty(SCAN_START_KEY_PROPERTY, "0");
     if (scanlengthdistrib.compareTo("uniform") == 0) {
       scanlength = new UniformLongGenerator(minscanlength, maxscanlength);
     } else if (scanlengthdistrib.compareTo("zipfian") == 0) {
@@ -558,6 +563,7 @@ public class CoreWorkload extends Workload {
         data = new StringByteIterator(buildDeterministicValue(key, fieldkey));
       } else {
         // fill with random data
+        //System.out.println("Generate random data");
         data = new RandomByteIterator(fieldlengthgenerator.nextValue().longValue());
       }
       values.put(fieldkey, data);
@@ -774,11 +780,15 @@ public class CoreWorkload extends Workload {
   }
 
   public void doTransactionScan(DB db) {
-    // choose a random key
-    long keynum = nextKeynum();
+    String startkeyname;
 
-    String startkeyname = buildKeyName(keynum);
-
+    if(this.startScanKey.equals("0")){
+      // choose a random key
+      long keynum = nextKeynum();
+      startkeyname = buildKeyName(keynum);
+    }else{
+      startkeyname = this.startScanKey;
+    }
     // choose a random scan length
     int len = scanlength.nextValue().intValue();
 

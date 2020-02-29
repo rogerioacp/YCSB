@@ -102,10 +102,14 @@ public class PostgreNoSQLDBClient extends DB {
 
   private static final String DEFAULT_PROP = "";
 
+  private static final String ZERO_PADDING_PROPERTY = "zeropadding";
+
   /** Postgres execution mode. */
   public static final String EXECUTION_MODE = "postgrenosql.execution";
 
   private PostgresMode pgmode;
+
+  private int zeropadding;
 
   /** Returns parsed boolean value from the properties if set, otherwise returns defaultVal. */
   private static boolean getBoolProperty(Properties props, String key, boolean defaultVal) {
@@ -130,6 +134,8 @@ public class PostgreNoSQLDBClient extends DB {
       String passwd = props.getProperty(CONNECTION_PASSWD, DEFAULT_PROP);
       String pgexec = props.getProperty(EXECUTION_MODE, PostgresMode.PLAINTEXT.name());
       boolean autoCommit = getBoolProperty(props, JDBC_AUTO_COMMIT, true);
+      zeropadding =
+          Integer.parseInt(props.getProperty(ZERO_PADDING_PROPERTY, "1"));
 
       try {
         Properties tmpProps = new Properties();
@@ -269,33 +275,97 @@ public class PostgreNoSQLDBClient extends DB {
       return Status.ERROR;
     }
   }
+  protected String buildKeyName(int zpad, long keynum) {
+
+    String value = Long.toString(keynum);
+    int fill = zpad - value.length();
+    String prekey = "";
+    for (int i = 0; i < fill; i++) {
+      prekey += '0';
+    }
+    return prekey + value;
+  }
+
+
+  private HashMap<String, ByteIterator> oblivScan(String tableName, String key, int recordcount,
+                                                  Set<String> fields) throws SQLException {
+    ResultSet resultSet;
+    String fetchNextStatment = "FETCH NEXT IN tcursor";
+    String field;
+    String tkey;
+    int nkey = 0;
+    boolean hasMore = false;
+    HashMap<String, ByteIterator> values = new HashMap<String, ByteIterator>();
+    Statement query = connection.createStatement();
+    tkey = trimKey(key);
+    nkey = Integer.parseInt(tkey);
+    //System.out.println("--- requested nkey " + nkey + " with recordcount " + recordcount);
+    //key = "user000000000";
+
+    for(int i = 0; i < recordcount; i++){
+      tkey = buildKeyName(zeropadding, nkey);
+      //System.out.println("request key " + tkey + " with zeropadding "+ zeropadding);
+      executeStatement(createSetNextTermStatement(tkey));
+      resultSet = query.executeQuery(fetchNextStatment);
+      if(resultSet.next()){
+        //field = resultSet.getString(1).trim();
+        //System.out.println("Returned field is "+field);
+        resultSet.close();
+      }else{
+        resultSet.close();
+        System.out.println("Error in oblivScan");
+        System.exit(-1);
+      }
+      nkey +=1;
+      //System.out.println("Incremented key "+nkey);
+
+    }
+
+    return values;
+  }
 
   @Override
   public Status scan(String tableName, String startKey, int recordcount, Set<String> fields,
                      Vector<HashMap<String, ByteIterator>> result) {
+
     try {
-      StatementType type = new StatementType(StatementType.Type.SCAN, tableName, fields);
-      PreparedStatement scanStatement = cachedStatements.get(type);
-      if (scanStatement == null) {
-        scanStatement = createAndCacheScanStatement(type);
-      }
-      scanStatement.setString(1, startKey);
-      scanStatement.setInt(2, recordcount);
-      ResultSet resultSet = scanStatement.executeQuery();
-      for (int i = 0; i < recordcount && resultSet.next(); i++) {
-        if (result != null && fields != null) {
-          HashMap<String, ByteIterator> values = new HashMap<String, ByteIterator>();
-          for (String field : fields) {
-            String value = resultSet.getString(field);
-            values.put(field, new StringByteIterator(value));
-          }
+      if(this.pgmode != PostgresMode.PLAINTEXT){
 
-          result.add(values);
+        HashMap<String, ByteIterator> res = oblivScan(tableName, startKey, recordcount, fields);
+        result.add(res);
+        return Status.OK;
+      }else{
+        //System.out.println("Scan key is "+startKey);
+        StatementType type = new StatementType(StatementType.Type.SCAN, tableName, fields);
+        PreparedStatement scanStatement = cachedStatements.get(type);
+        if (scanStatement == null) {
+          scanStatement = createAndCacheScanStatement(type);
+          //System.out.println("Scan statement is "+ scanStatement.toString());
         }
-      }
+        scanStatement.setString(1, trimKey(startKey));
+        //scanStatement.setInt(2, recordcount);
+        ResultSet resultSet = scanStatement.executeQuery();
+        //System.out.println("recordcount " + recordcount);
+        //System.out.println("Result set size " + resultSet);
+        for (int i = 0; i < recordcount && resultSet.next(); i++) {
+        //while(resultSet.next()){
+          //System.out.println("record  " + resultSet.getString(1));
+          //System.out.println("fields is "+fields);
+          if (result != null && fields != null) {
+            HashMap<String, ByteIterator> values = new HashMap<String, ByteIterator>();
+            for (String field : fields) {
+              String value = resultSet.getString(field);
+             // System.out.println("Plaintext scan field is" + field + " and value is " + value);
+              values.put(field, new StringByteIterator(value));
+            }
 
-      resultSet.close();
-      return Status.OK;
+            result.add(values);
+          }
+        }
+
+        resultSet.close();
+        return Status.OK;
+      }
     } catch (SQLException e) {
       LOG.error("Error in processing scan of table: " + tableName + ": " + e);
       return Status.ERROR;
@@ -354,15 +424,21 @@ public class PostgreNoSQLDBClient extends DB {
       object.setValue(jsonObject.toJSONString());*/
       //String logmsg = "Trimmed key is " + trimKey(key) + " and json object has size ";
 
-      //System.out.println(logmsg + jsonObject.toJSONString().length());
-
-      if(jsonObject.toJSONString().length() > 1300){
+      System.out.println("message of size " +jsonObject.toJSONString().length());
+      String res = jsonObject.toJSONString();
+      while(res.length() < 10000){
+        res += res;
+      }
+      /*if(jsonObject.toJSONString().length() > 1300){
         insertStatement.setObject(2, jsonObject.toJSONString().substring(0, 1300));
       }else{
         insertStatement.setObject(2, jsonObject.toJSONString());
-      }
-      insertStatement.setString(1, trimKey(key));
+      }*/
+      System.out.println("Message Size is "+res.length());
+      insertStatement.setObject(2, res.substring(0, 8000));
 
+      //System.out.println("Key is " + key);
+      insertStatement.setString(1, trimKey(key));
       int result = insertStatement.executeUpdate();
       if (result == 1) {
         return Status.OK;
@@ -447,9 +523,9 @@ public class PostgreNoSQLDBClient extends DB {
     scan.append(" WHERE ");
     scan.append(PRIMARY_KEY);
     scan.append(" >= ?");
-    scan.append(" ORDER BY ");
+    /*scan.append(" ORDER BY ");
     scan.append(PRIMARY_KEY);
-    scan.append(" LIMIT ?");
+    scan.append(" LIMIT ?");*/
 
     return scan.toString();
   }

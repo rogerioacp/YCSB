@@ -22,15 +22,20 @@
 #   Request distribution: zipfian
 
 recordcount=1000
-operationcount=1000
+operationcount=50000
 workload=site.ycsb.workloads.CoreWorkload
 
+insertorder=ordered
+zeropadding=9
 readallfields=true
 
-readproportion=0.95
-updateproportion=0.05
-scanproportion=0
+scanstartkey=user000000040
+maxscanlength=5
+
+readproportion=0
+updateproportion=0
+scanproportion=1
 insertproportion=0
 
-requestdistribution=zipfian
+requestdistribution=uniform
 

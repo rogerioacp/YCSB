@@ -22,12 +22,14 @@
 #   Default data size: 1 KB records (10 fields, 100 bytes each, plus key)
 #   Request distribution: zipfian
 
-recordcount=4194303
+#recordcount=4194303
 #recordcount=65536
-#recordcount=500
+recordcount=500
 #recordcount=20
 #recordcount=1048576
 operationcount=1000
+insertorder=ordered
+zeropadding=9
 workload=site.ycsb.workloads.CoreWorkload
 hdrhistogram.fileoutput=true
 #measurementtype=timeseries
@@ -35,7 +37,7 @@ hdrhistogram.fileoutput=true
 #timeseries.granularity=1000
 readallfields=true
 #maxexecutiontime=1800
-maxexecutiontime=180
+#maxexecutiontime=180
 readproportion=1
 updateproportion=0
 scanproportion=0

@@ -34,7 +34,11 @@ $$
 
                 select Oid from pg_class into user_email_oid  where relname  = 'mirror_usertable_key';
 
-                insert into obl_ftw (ftw_table_oid, mirror_table_oid, mirror_index_oid, ftw_table_nblocks, ftw_index_nblocks, init) values(ftw_users_oid, user_oid, user_email_oid, 176000, 6000, false);
+                /*insert into obl_ftw (ftw_table_oid, mirror_table_oid,
+                 * mirror_index_oid, ftw_table_nblocks, ftw_index_nblocks, init)
+                 * values(ftw_users_oid, user_oid, user_email_oid, 176000, 6000,
+                    * false);*/
+            insert into obl_ftw (ftw_table_oid, mirror_table_oid, mirror_index_oid, ftw_table_nblocks, ftw_index_nblocks, init) values(ftw_users_oid, user_oid, user_email_oid, 540, 10, false);
 
         END;
 $$ LANGUAGE plpgsql;
