@@ -424,7 +424,7 @@ public class PostgreNoSQLDBClient extends DB {
       object.setValue(jsonObject.toJSONString());*/
       //String logmsg = "Trimmed key is " + trimKey(key) + " and json object has size ";
 
-      System.out.println("message of size " +jsonObject.toJSONString().length());
+      //System.out.println("message of size " +jsonObject.toJSONString().length());
       String res = jsonObject.toJSONString();
       while(res.length() < 10000){
         res += res;
@@ -434,7 +434,7 @@ public class PostgreNoSQLDBClient extends DB {
       }else{
         insertStatement.setObject(2, jsonObject.toJSONString());
       }*/
-      System.out.println("Message Size is "+res.length());
+      //System.out.println("Message Size is "+res.length());
       insertStatement.setObject(2, res.substring(0, 8000));
 
       //System.out.println("Key is " + key);
