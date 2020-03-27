@@ -24,7 +24,12 @@
 
 recordcount={tsize}
 
+#key are sorted and padded with 0s
+zeropadding=9
+insertorder=ordered
+
 operationcount=10000000
+
 workload=site.ycsb.workloads.CoreWorkload
 hdrhistogram.fileoutput=true
 readallfields=true

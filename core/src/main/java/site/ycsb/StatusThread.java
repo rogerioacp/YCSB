@@ -146,15 +146,29 @@ public class StatusThread extends Thread {
 
     long totalops = 0;
     long todoops = 0;
+    /**
+     * The YCSB starting time begins when the benchmark is launched and not after the database client connects
+     * to the database server. This returns an incorremnt troughput when the initialization setup has a singnificant
+     * latency as in the case of OIS. As such, we have added a method set the starting time after the database
+     * connection is initialized. This only works if we have a single thread per benchmark*/
+    long realStartTime = 0;
+
 
     // Calculate the total number of operations completed.
     for (ClientThread t : clients) {
       totalops += t.getOpsDone();
       todoops += t.getOpsTodo();
+      realStartTime = t.getStartTime();
     }
 
+    long interval;
+    if(realStartTime > 0){
+      interval = endIntervalMs - realStartTime;
 
-    long interval = endIntervalMs - startTimeMs;
+    }else{
+      interval = endIntervalMs - startTimeMs;
+    }
+
     double throughput = 1000.0 * (((double) totalops) / (double) interval);
     double curthroughput = 1000.0 * (((double) (totalops - lastTotalOps)) /
         ((double) (endIntervalMs - startIntervalMs)));

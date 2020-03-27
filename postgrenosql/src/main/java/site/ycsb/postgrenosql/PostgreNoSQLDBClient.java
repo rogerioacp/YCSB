@@ -136,7 +136,6 @@ public class PostgreNoSQLDBClient extends DB {
       boolean autoCommit = getBoolProperty(props, JDBC_AUTO_COMMIT, true);
       zeropadding =
           Integer.parseInt(props.getProperty(ZERO_PADDING_PROPERTY, "1"));
-
       try {
         Properties tmpProps = new Properties();
         tmpProps.setProperty("user", user);
@@ -152,7 +151,11 @@ public class PostgreNoSQLDBClient extends DB {
         LOG.error("Error during initialization: " + e);
       }
       pgmode = PostgresMode.valueOf(pgexec);
-
+      /*try {
+        Thread.sleep(60000);
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }*/
       if(pgmode != PostgresMode.PLAINTEXT){
         executeStatement("BEGIN");
         executeStatement(createOpenEnclaveStatement());
@@ -235,12 +238,12 @@ public class PostgreNoSQLDBClient extends DB {
     try{
       ResultSet resultSet;
       Statement query = connection.createStatement();
-
+      String tkey = trimKey(key);
       if(this.pgmode != PostgresMode.PLAINTEXT) {
-        executeStatement(createSetNextTermStatement(trimKey(key)));
+        executeStatement(createSetNextTermStatement(tkey));
         resultSet = query.executeQuery(fetchNextStatment);
       }else{
-        resultSet = query.executeQuery(createPlaintextReadStatement(trimKey(key)));
+        resultSet = query.executeQuery(createPlaintextReadStatement(tkey));
       }
 
       if (!resultSet.next()) {
@@ -253,7 +256,13 @@ public class PostgreNoSQLDBClient extends DB {
           String field;
           String value;
           do{
+
             field = resultSet.getString(1);
+            //System.out.println("compare " + key + " / " + field + "returns " + field.equals(key));
+            //if(!field.trim().equals(tkey)){
+              //System.out.println("bad compare "  + tkey + "/" + field.trim()+".");
+              //System.exit(1);
+            //}
             value = resultSet.getString(2);
             result.put(field, new StringByteIterator(value));
           }while (resultSet.next());

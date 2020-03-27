@@ -357,6 +357,11 @@ public final class Client {
           // ignored
         }
       }
+      //Only works for a single client thread
+      for(ClientThread client: clients){
+        st = client.getStartTime();
+
+      }
 
       en = System.currentTimeMillis();
     }

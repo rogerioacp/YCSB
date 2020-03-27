@@ -44,6 +44,7 @@ public class ClientThread implements Runnable {
   private Properties props;
   private long targetOpsTickNs;
   private final Measurements measurements;
+  private long startTime;
 
   /**
    * Constructor.
@@ -71,6 +72,7 @@ public class ClientThread implements Runnable {
     measurements = Measurements.getMeasurements();
     spinSleep = Boolean.valueOf(this.props.getProperty("spin.sleep", "false"));
     this.completeLatch = completeLatch;
+    this.startTime = 0;
   }
 
   public void setThreadId(final int threadId) {
@@ -85,8 +87,13 @@ public class ClientThread implements Runnable {
     return opsdone;
   }
 
+  public long getStartTime() {
+    return startTime;
+  }
+
   @Override
   public void run() {
+
     try {
       db.init();
     } catch (DBException e) {
@@ -94,7 +101,6 @@ public class ClientThread implements Runnable {
       e.printStackTrace(System.out);
       return;
     }
-
     try {
       workloadstate = workload.initThread(props, threadid, threadcount);
     } catch (WorkloadException e) {
@@ -114,6 +120,7 @@ public class ClientThread implements Runnable {
       sleepUntil(System.nanoTime() + randomMinorDelay);
     }
     try {
+      startTime = System.currentTimeMillis();
       if (dotransactions) {
         long startTimeNanos = System.nanoTime();
 
